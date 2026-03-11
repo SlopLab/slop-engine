@@ -1,0 +1,9 @@
+{
+  "step": "Static Analysis",
+  "expectations": {
+    "create": [
+      "STATIC"
+    ]
+  },
+  "prompt": "Under the folder 'artifacts' are file(s) which should be reverse engineered. The file ARTIFACTS.md contains a list with all relevant files and their details. Use this list and perform a static analysis of the files (e.g. unpack installers, disassemble executables). Afterwards create a folder 'STATIC' which contains a markdown file for each analysed file. This markdown file contains the relevant findings of the static analysis."
+}

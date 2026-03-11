@@ -1,0 +1,9 @@
+{
+  "step": "Implementation",
+  "expectations": {
+    "create": [
+      "IMPLEMENT"
+    ]
+  },
+  "prompt": "Under the folder 'SPEC' is a clean room specification of a set of file(s). Use only these specifications and implement a Ruby program which full-fills the requirements given by the specification. The implementation should be placed under the folder IMPLEMENT."
+}

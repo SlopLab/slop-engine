@@ -1,0 +1,9 @@
+{
+  "step": "Artifacts",
+  "expectations": {
+    "create": [
+      "ARTIFACTS.md"
+    ]
+  },
+  "prompt": "Under the folder 'artifacts' are file(s) which should be reverse engineered. Create a file ARTIFACTS.md which just creates a chapter for each file found in the artifacts folder with a list of the following information: filename, sha256, size, filetype (e.g. executable, archive, installer)"
+}
