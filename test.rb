@@ -9,7 +9,7 @@ def slopit(re_dir)
   root_dir = File.expand_path(File.dirname(__FILE__))
 
   puts "Starting in #{re_dir}"
-  system("ruby #{File.join(root_dir, 'slopit.rb')} #{re_dir}")
+  system("ruby #{File.join(root_dir, 'slopit.rb')} #{re_dir} 2>&1 >> /dev/null")
 end
 
 def build_hello
@@ -107,8 +107,7 @@ def wait_for_nc_server(pid, log_path, host = 'slop-engine.de', port = 4567, time
     loop do
       _, status = Process.waitpid2(pid, Process::WNOHANG)
       if status
-        log_output = File.exist?(log_path) ? File.read(log_path) : ''
-        raise "network-client server exited early with status #{status.exitstatus}\n#{log_output}"
+        raise "network-client server exited early with status #{status.exitstatus}\n#{read_log(log_path)}"
       end
 
       begin
@@ -121,8 +120,7 @@ def wait_for_nc_server(pid, log_path, host = 'slop-engine.de', port = 4567, time
     end
   end
 rescue Timeout::Error
-  log_output = File.exist?(log_path) ? File.read(log_path) : ''
-  raise "timed out waiting for network-client server on #{host}:#{port}\n#{log_output}"
+  raise "timed out waiting for network-client server on #{host}:#{port}\n#{read_log(log_path)}"
 end
 
 def stop_process(pid)
@@ -151,23 +149,33 @@ rescue Timeout::Error
 rescue Errno::ECHILD
 end
 
+def read_log(log_path)
+  File.exist?(log_path) ? File.read(log_path) : ''
+end
+
+def check_time(elapsed_sec, max_sec)
+  if elapsed_sec > max_sec
+    puts " - reverse engineering took too long (#{elapsed_sec}sec)"
+  else
+    puts " - reverse engineering done"
+  end
+end
+
+def check_output(re_dir, cmd, expected)
+  if `#{cmd} #{re_dir}/IMPLEMENT/*` == expected
+    puts " - re-implementation correct"
+  else
+    puts " - re-implementation is not correct"
+  end
+end
+
 t1 = Time.now
 puts 'slopping hello-world...'
 build_hello
 re_dir = copy_hello
 slopit(re_dir)
-t2 = Time.now
-hello_exe_time_sec = t2 - t1
-if hello_exe_time_sec > (12 * 60)
-  puts " - reverse engineering took to long (#{hello_exe_time_sec}sec)"
-else
-  puts " - reverse engineering done"
-end
-unless `cat #{re_dir}/IMPLEMENT/*` == "puts \"Hello, World!\"\n"
-  puts " - re-implementation is not correct"
-else
-  puts " - re-implementation correct"
-end
+check_time(Time.now - t1, 12 * 60)
+check_output(re_dir, 'cat', "puts \"Hello, World!\"\n")
 puts "hello-world was slopt!"
 
 
@@ -179,18 +187,8 @@ server_pid, = start_nc_server
 begin
   slopit(re_dir)
 
-  t2 = Time.now
-  nc_exe_time_sec = t2 - t1
-  if nc_exe_time_sec > (21 * 60)
-    puts " - reverse engineering took to long (#{nc_exe_time_sec}sec)"
-  else
-    puts " - reverse engineering done"
-  end
-  unless `ruby #{re_dir}/IMPLEMENT/*` == "SLOPINATOR\n"
-    puts " - re-implementation is not correct"
-  else
-    puts " - re-implementation correct"
-  end
+  check_time(Time.now - t1, 21 * 60)
+  check_output(re_dir, 'ruby', "SLOPINATOR\n")
   puts "network-client was slopt!"
 ensure
   stop_process(server_pid)
