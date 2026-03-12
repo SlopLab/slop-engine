@@ -123,6 +123,90 @@ def run_fixture(fixture)
   end
 end
 
+def configured_jobs
+  jobs_value = ENV.fetch('JOBS', '1')
+  jobs = Integer(jobs_value)
+  raise 'JOBS must be greater than or equal to 1' if jobs < 1
+
+  jobs
+rescue ArgumentError
+  raise "JOBS must be an integer, got #{jobs_value.inspect}"
+end
+
+def run_all_fixtures(fixtures)
+  jobs = [configured_jobs, fixtures.length].min
+
+  if jobs <= 1
+    fixtures.each { |fixture| run_fixture(fixture) }
+    return
+  end
+
+  puts "Running #{fixtures.length} fixtures with #{jobs} workers..."
+  run_fixtures_in_parallel(fixtures, jobs)
+end
+
+def run_fixtures_in_parallel(fixtures, jobs)
+  queue = fixtures.dup
+  active_workers = {}
+  failed_fixtures = []
+
+  until queue.empty? && active_workers.empty?
+    while active_workers.length < jobs && (fixture = queue.shift)
+      worker = spawn_fixture_worker(fixture)
+      active_workers[worker[:pid]] = worker
+      puts "Started #{fixture.name} in worker #{worker[:pid]}"
+    end
+
+    pid, status = Process.wait2
+    worker = active_workers.delete(pid)
+    next unless worker
+
+    print_worker_log(worker, status)
+    failed_fixtures << worker[:fixture].name unless status.success?
+  end
+
+  return if failed_fixtures.empty?
+
+  raise "Fixtures failed: #{failed_fixtures.join(', ')}"
+end
+
+def spawn_fixture_worker(fixture)
+  log_path = File.join(Dir.tmpdir, "test-#{fixture.name}-#{Process.pid}-#{Time.now.to_i}.log")
+
+  pid = fork do
+    log_file = File.open(log_path, 'w')
+    log_file.sync = true
+    $stdout.reopen(log_file)
+    $stderr.reopen(log_file)
+    $stdout.sync = true
+    $stderr.sync = true
+    log_file.close
+
+    begin
+      run_fixture(fixture)
+      exit 0
+    rescue StandardError => e
+      warn e.full_message(highlight: false, order: :top)
+      exit 1
+    end
+  end
+
+  {
+    pid: pid,
+    fixture: fixture,
+    log_path: log_path
+  }
+end
+
+def print_worker_log(worker, status)
+  label = status.success? ? 'PASS' : 'FAIL'
+  puts "== #{worker[:fixture].name} #{label} =="
+  output = read_log(worker[:log_path])
+  print output unless output.empty?
+  puts if output.empty? || !output.end_with?("\n")
+  FileUtils.rm_f(worker[:log_path])
+end
+
 def build_fixture(fixture)
   build_script = File.join(fixture.dir, 'build.sh')
   raise "Missing build script for #{fixture.name}: #{build_script}" unless File.file?(build_script)
@@ -271,6 +355,4 @@ def verify_output!(fixture, re_dir)
   puts ' - re-implementation correct'
 end
 
-discover_fixtures.each do |fixture|
-  run_fixture(fixture)
-end
+run_all_fixtures(discover_fixtures)
