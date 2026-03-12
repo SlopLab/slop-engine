@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Remove compiled binaries
-rm -f hello
+# Remove build outputs
+rm -rf build
 
 echo "Cleanup complete."

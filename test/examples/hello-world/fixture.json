@@ -1,0 +1,9 @@
+{
+  "runtime": null,
+  "expectations": {
+    "max_duration_seconds": 720,
+    "verify_command": "cat",
+    "verify_glob": "IMPLEMENT/*",
+    "expected_stdout": "puts \"Hello, World!\"\n"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "runtime": {
+    "start_command": "ruby server.rb",
+    "ready_tcp": {
+      "host": "slop-engine.de",
+      "port": 4567,
+      "timeout_seconds": 10
+    }
+  },
+  "expectations": {
+    "max_duration_seconds": 1260,
+    "verify_command": "ruby",
+    "verify_glob": "IMPLEMENT/*",
+    "expected_stdout": "SLOPINATOR\n"
+  }
+}

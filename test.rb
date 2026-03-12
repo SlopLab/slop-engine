@@ -1,151 +1,243 @@
 #!/usr/bin/env ruby
 
 require 'fileutils'
+require 'json'
+require 'open3'
+require 'shellwords'
 require 'socket'
 require 'tmpdir'
 require 'timeout'
 
+ROOT_DIR = File.expand_path(__dir__)
+EXAMPLES_DIR = File.join(ROOT_DIR, 'test', 'examples')
+SLOPIT_PATH = File.join(ROOT_DIR, 'slopit.rb')
+
+Fixture = Struct.new(:name, :dir, :manifest, keyword_init: true)
+
+def discover_fixtures
+  fixture_paths = Dir.glob(File.join(EXAMPLES_DIR, '*', 'fixture.json')).sort
+  raise "No fixtures found in #{EXAMPLES_DIR}" if fixture_paths.empty?
+
+  fixture_paths.map do |manifest_path|
+    fixture_dir = File.dirname(manifest_path)
+
+    Fixture.new(
+      name: File.basename(fixture_dir),
+      dir: fixture_dir,
+      manifest: load_manifest(manifest_path)
+    )
+  end
+end
+
+def load_manifest(manifest_path)
+  manifest = JSON.parse(File.read(manifest_path))
+  validate_manifest!(manifest, manifest_path)
+  manifest
+rescue JSON::ParserError => e
+  raise "Invalid fixture JSON in #{manifest_path}: #{e.message}"
+end
+
+def validate_manifest!(manifest, manifest_path)
+  unless manifest.is_a?(Hash)
+    raise "Fixture manifest #{manifest_path} must contain a JSON object"
+  end
+
+  expectations = manifest['expectations']
+  unless expectations.is_a?(Hash)
+    raise "Fixture manifest #{manifest_path} must define expectations"
+  end
+
+  required_expectation_keys = %w[max_duration_seconds verify_command verify_glob expected_stdout]
+  required_expectation_keys.each do |key|
+    raise "Fixture manifest #{manifest_path} is missing expectations.#{key}" unless expectations.key?(key)
+  end
+
+  unless expectations['max_duration_seconds'].is_a?(Numeric)
+    raise "Fixture manifest #{manifest_path} has a non-numeric expectations.max_duration_seconds"
+  end
+
+  %w[verify_command verify_glob expected_stdout].each do |key|
+    unless expectations[key].is_a?(String)
+      raise "Fixture manifest #{manifest_path} has a non-string expectations.#{key}"
+    end
+  end
+
+  runtime = manifest['runtime']
+  return if runtime.nil?
+
+  unless runtime.is_a?(Hash)
+    raise "Fixture manifest #{manifest_path} has a non-object runtime"
+  end
+
+  start_command = runtime['start_command']
+  unless start_command.is_a?(String) && !start_command.empty?
+    raise "Fixture manifest #{manifest_path} has an invalid runtime.start_command"
+  end
+
+  ready_tcp = runtime['ready_tcp']
+  return if ready_tcp.nil?
+
+  unless ready_tcp.is_a?(Hash)
+    raise "Fixture manifest #{manifest_path} has a non-object runtime.ready_tcp"
+  end
+
+  %w[host port timeout_seconds].each do |key|
+    raise "Fixture manifest #{manifest_path} is missing runtime.ready_tcp.#{key}" unless ready_tcp.key?(key)
+  end
+
+  unless ready_tcp['host'].is_a?(String) && !ready_tcp['host'].empty?
+    raise "Fixture manifest #{manifest_path} has an invalid runtime.ready_tcp.host"
+  end
+
+  unless ready_tcp['port'].is_a?(Integer)
+    raise "Fixture manifest #{manifest_path} has a non-integer runtime.ready_tcp.port"
+  end
+
+  unless ready_tcp['timeout_seconds'].is_a?(Numeric)
+    raise "Fixture manifest #{manifest_path} has a non-numeric runtime.ready_tcp.timeout_seconds"
+  end
+end
+
 def slopit(re_dir)
-  root_dir = File.expand_path(File.dirname(__FILE__))
-
   puts "Starting in #{re_dir}"
-  system("ruby #{File.join(root_dir, 'slopit.rb')} #{re_dir} 2>&1 >> /dev/null")
+  success = system('ruby', SLOPIT_PATH, re_dir, out: File::NULL, err: File::NULL)
+  raise "slopit failed for #{re_dir}" unless success
 end
 
-def build_hello
-  root_dir = File.expand_path(File.dirname(__FILE__))
-  src_dir = File.join(root_dir, 'hello-world')
+def run_fixture(fixture)
+  started_at = Time.now
+  runtime = nil
 
-  system("cd #{src_dir} && bash ./build.sh")
+  puts "slopping #{fixture.name}..."
+  build_dir = build_fixture(fixture)
+  re_dir = stage_build_artifacts(fixture, build_dir)
+
+  begin
+    runtime = start_runtime(fixture)
+    slopit(re_dir)
+    enforce_duration!(Time.now - started_at, fixture.manifest.fetch('expectations').fetch('max_duration_seconds'))
+    verify_output!(fixture, re_dir)
+    puts "#{fixture.name} was slopt!"
+  ensure
+    stop_runtime(runtime)
+  end
 end
 
-def copy_hello
-  root_dir = File.expand_path(File.dirname(__FILE__))
-  src_dir = File.join(root_dir, 'hello-world')
-  tmp_dir = Dir.mktmpdir('hello_re_dir')
+def build_fixture(fixture)
+  build_script = File.join(fixture.dir, 'build.sh')
+  raise "Missing build script for #{fixture.name}: #{build_script}" unless File.file?(build_script)
 
-  FileUtils.mkdir_p(File.join(tmp_dir, "artifacts"))
-  FileUtils.mv(File.join(src_dir, 'hello'), File.join(tmp_dir, 'artifacts', 'hello'))
+  success = system('bash', './build.sh', chdir: fixture.dir)
+  raise "Build failed for #{fixture.name}" unless success
 
-  puts "Binary available at #{tmp_dir}/artifacts"
+  build_dir = File.join(fixture.dir, 'build')
+  raise "Build directory missing for #{fixture.name}: #{build_dir}" unless Dir.exist?(build_dir)
 
-  tmp_dir
+  build_entries = Dir.children(build_dir)
+  raise "Build directory is empty for #{fixture.name}: #{build_dir}" if build_entries.empty?
+
+  build_dir
 end
 
-def build_nc
-  root_dir = File.expand_path(File.dirname(__FILE__))
-  src_dir = File.join(root_dir, 'network-client')
+def stage_build_artifacts(fixture, build_dir)
+  re_dir = Dir.mktmpdir("#{fixture.name}_re_dir")
+  artifacts_dir = File.join(re_dir, 'artifacts')
+  build_entries = Dir.children(build_dir).sort.map { |entry| File.join(build_dir, entry) }
 
-  system("cd #{src_dir} && bash ./build.sh")
+  FileUtils.mkdir_p(artifacts_dir)
+  FileUtils.cp_r(build_entries, artifacts_dir, preserve: true)
+
+  puts "Artifacts available at #{artifacts_dir}"
+
+  re_dir
 end
 
-def copy_nc
-  root_dir = File.expand_path(File.dirname(__FILE__))
-  src_dir = File.join(root_dir, 'network-client')
-  tmp_dir = Dir.mktmpdir('nc_re_dir')
+def start_runtime(fixture)
+  runtime_config = fixture.manifest['runtime']
+  return nil if runtime_config.nil?
 
-  FileUtils.mkdir_p(File.join(tmp_dir, "artifacts"))
-  FileUtils.mv(File.join(src_dir, 'nc'), File.join(tmp_dir, 'artifacts', 'nc'))
+  log_path = File.join(Dir.tmpdir, "#{fixture.name}-runtime-#{Process.pid}.log")
+  process = nil
+  log_file = File.open(log_path, 'a')
+  log_file.sync = true
 
-  puts "Binary available at #{tmp_dir}/artifacts"
+  begin
+    process = {
+      pid: Process.spawn(
+        'bash',
+        '-lc',
+        runtime_config.fetch('start_command'),
+        chdir: fixture.dir,
+        out: log_file,
+        err: log_file,
+        pgroup: true
+      ),
+      log_path: log_path,
+      name: fixture.name
+    }
+  ensure
+    log_file.close
+  end
 
-  tmp_dir
+  wait_for_runtime_ready(process, runtime_config['ready_tcp']) if runtime_config['ready_tcp']
+  process
+rescue StandardError
+  stop_runtime(process)
+  raise
 end
 
-def start_nc_server
-  root_dir = File.expand_path(File.dirname(__FILE__))
-  server_path = File.join(root_dir, 'network-client', 'server.rb')
-  log_path = File.join(Dir.tmpdir, "network-client-server-#{Process.pid}.log")
-  supervisor_code = <<~'RUBY'
-    server_path = ARGV.fetch(0)
-    log_path = ARGV.fetch(1)
-    stop_requested = false
-    child_pid = nil
+def wait_for_runtime_ready(process, ready_tcp)
+  host = ready_tcp.fetch('host')
+  port = ready_tcp.fetch('port')
+  timeout_seconds = ready_tcp.fetch('timeout_seconds')
 
-    shutdown_child = lambda do |signal|
-      next unless child_pid
-
-      begin
-        Process.kill(signal, child_pid)
-      rescue Errno::ESRCH
-      end
-    end
-
-    Signal.trap("INT") do
-      stop_requested = true
-      shutdown_child.call("TERM")
-    end
-
-    Signal.trap("TERM") do
-      stop_requested = true
-      shutdown_child.call("TERM")
-    end
-
-    File.open(log_path, "a") do |log|
-      log.sync = true
-
-      until stop_requested
-        child_pid = Process.spawn("ruby", server_path, chdir: File.dirname(server_path), out: log, err: log)
-        _, status = Process.waitpid2(child_pid)
-        child_pid = nil
-        break if stop_requested
-
-        log.puts("[#{Time.now.utc.iso8601}] server.rb exited with status #{status.exitstatus || "signal #{status.termsig}"}, restarting")
-        sleep 0.2
-      end
-    end
-  RUBY
-
-  pid = Process.spawn('ruby', '-rtime', '-e', supervisor_code, server_path, log_path)
-
-  wait_for_nc_server(pid, log_path)
-  [pid, log_path]
-end
-
-def wait_for_nc_server(pid, log_path, host = 'slop-engine.de', port = 4567, timeout_sec = 10)
-  Timeout.timeout(timeout_sec) do
+  Timeout.timeout(timeout_seconds) do
     loop do
-      _, status = Process.waitpid2(pid, Process::WNOHANG)
+      _, status = Process.waitpid2(process[:pid], Process::WNOHANG)
       if status
-        raise "network-client server exited early with status #{status.exitstatus}\n#{read_log(log_path)}"
+        exit_status = status.exitstatus || "signal #{status.termsig}"
+        raise "#{process[:name]} runtime exited early with status #{exit_status}\n#{read_log(process[:log_path])}"
       end
 
       begin
         socket = TCPSocket.new(host, port)
         socket.close
         return
-      rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, SocketError
+      rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ENETUNREACH, SocketError
         sleep 0.1
       end
     end
   end
 rescue Timeout::Error
-  raise "timed out waiting for network-client server on #{host}:#{port}\n#{read_log(log_path)}"
+  raise "timed out waiting for #{process[:name]} runtime on #{host}:#{port}\n#{read_log(process[:log_path])}"
 end
 
-def stop_process(pid)
-  return unless pid
+def stop_runtime(process)
+  return unless process
+
+  pid = process[:pid]
 
   begin
-    Process.kill('TERM', pid)
+    Process.kill('TERM', -pid)
   rescue Errno::ESRCH
+    reap_process(pid)
     return
   end
 
   Timeout.timeout(5) do
-    Process.wait(pid)
+    reap_process(pid)
   end
 rescue Timeout::Error
   begin
-    Process.kill('KILL', pid)
+    Process.kill('KILL', -pid)
   rescue Errno::ESRCH
-    return
   end
 
-  begin
-    Process.wait(pid)
-  rescue Errno::ECHILD
-  end
+  reap_process(pid)
+end
+
+def reap_process(pid)
+  Process.wait(pid)
 rescue Errno::ECHILD
 end
 
@@ -153,43 +245,32 @@ def read_log(log_path)
   File.exist?(log_path) ? File.read(log_path) : ''
 end
 
-def check_time(elapsed_sec, max_sec)
-  if elapsed_sec > max_sec
-    puts " - reverse engineering took too long (#{elapsed_sec}sec)"
-  else
-    puts " - reverse engineering done"
+def enforce_duration!(elapsed_seconds, max_seconds)
+  if elapsed_seconds > max_seconds
+    raise format('reverse engineering took too long (%.2fs > %ss)', elapsed_seconds, max_seconds)
   end
+
+  puts ' - reverse engineering done'
 end
 
-def check_output(re_dir, cmd, expected)
-  if `#{cmd} #{re_dir}/IMPLEMENT/*` == expected
-    puts " - re-implementation correct"
-  else
-    puts " - re-implementation is not correct"
+def verify_output!(fixture, re_dir)
+  expectations = fixture.manifest.fetch('expectations')
+  verify_pattern = File.join(re_dir, expectations.fetch('verify_glob'))
+  verify_targets = Dir.glob(verify_pattern).sort
+  raise "No verification targets matched #{verify_pattern}" if verify_targets.empty?
+
+  command = "#{expectations.fetch('verify_command')} #{Shellwords.join(verify_targets)}"
+  stdout, stderr, status = Open3.capture3('bash', '-lc', command)
+  raise "Verification command failed for #{fixture.name}: #{stderr}" unless status.success?
+
+  unless stdout == expectations.fetch('expected_stdout')
+    puts ' - re-implementation is not correct'
+    raise "Verification output mismatch for #{fixture.name}"
   end
+
+  puts ' - re-implementation correct'
 end
 
-t1 = Time.now
-puts 'slopping hello-world...'
-build_hello
-re_dir = copy_hello
-slopit(re_dir)
-check_time(Time.now - t1, 12 * 60)
-check_output(re_dir, 'cat', "puts \"Hello, World!\"\n")
-puts "hello-world was slopt!"
-
-
-t1 = Time.now
-puts 'slopping network-client...'
-build_nc
-re_dir = copy_nc
-server_pid, = start_nc_server
-begin
-  slopit(re_dir)
-
-  check_time(Time.now - t1, 21 * 60)
-  check_output(re_dir, 'ruby', "SLOPINATOR\n")
-  puts "network-client was slopt!"
-ensure
-  stop_process(server_pid)
+discover_fixtures.each do |fixture|
+  run_fixture(fixture)
 end
