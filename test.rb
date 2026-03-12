@@ -100,8 +100,12 @@ end
 
 def slopit(re_dir)
   puts "Starting in #{re_dir}"
-  success = system('ruby', SLOPIT_PATH, re_dir, out: File::NULL, err: File::NULL)
-  raise "slopit failed for #{re_dir}" unless success
+  stdout, stderr, status = Open3.capture3('ruby', SLOPIT_PATH, re_dir)
+  return if status.success?
+
+  details = [stdout, stderr].reject(&:empty?).join("\n").strip
+  details = '(no output from slopit)' if details.empty?
+  raise "slopit failed for #{re_dir}\n#{details}"
 end
 
 def run_fixture(fixture)
