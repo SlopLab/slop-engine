@@ -63,6 +63,10 @@ def validate_manifest!(manifest, manifest_path)
   end
 
   runtime = manifest['runtime']
+  advice = manifest['advice']
+
+  validate_advice!(advice, manifest_path) unless advice.nil?
+
   return if runtime.nil?
 
   unless runtime.is_a?(Hash)
@@ -98,9 +102,34 @@ def validate_manifest!(manifest, manifest_path)
   end
 end
 
-def slopit(re_dir)
+def validate_advice!(advice, manifest_path)
+  unless advice.is_a?(Hash)
+    raise "Fixture manifest #{manifest_path} has a non-object advice"
+  end
+
+  advice.each do |step_name, entries|
+    unless step_name.is_a?(String) && !step_name.empty?
+      raise "Fixture manifest #{manifest_path} has an invalid advice step name"
+    end
+
+    case entries
+    when String
+      raise "Fixture manifest #{manifest_path} has an empty advice entry for #{step_name}" if entries.strip.empty?
+    when Array
+      if entries.empty? || !entries.all? { |entry| entry.is_a?(String) && !entry.strip.empty? }
+        raise "Fixture manifest #{manifest_path} has invalid advice entries for #{step_name}"
+      end
+    else
+      raise "Fixture manifest #{manifest_path} has invalid advice entries for #{step_name}"
+    end
+  end
+end
+
+def slopit(re_dir, advice)
   puts "Starting in #{re_dir}"
-  stdout, stderr, status = Open3.capture3('ruby', SLOPIT_PATH, re_dir)
+  env = {}
+  env['SLOPIT_ADVICE_JSON'] = JSON.generate(advice) unless advice.nil? || advice.empty?
+  stdout, stderr, status = Open3.capture3(env, 'ruby', SLOPIT_PATH, re_dir)
   return if status.success?
 
   details = [stdout, stderr].reject(&:empty?).join("\n").strip
@@ -118,7 +147,7 @@ def run_fixture(fixture)
 
   begin
     runtime = start_runtime(fixture)
-    slopit(re_dir)
+    slopit(re_dir, fixture.manifest['advice'])
     enforce_duration!(Time.now - started_at, fixture.manifest.fetch('expectations').fetch('max_duration_seconds'))
     verify_output!(fixture, re_dir)
     puts "#{fixture.name} was slopt!"
@@ -128,7 +157,7 @@ def run_fixture(fixture)
 end
 
 def configured_jobs
-  jobs_value = ENV.fetch('JOBS', '1')
+  jobs_value = ENV.fetch('JOBS', '2')
   jobs = Integer(jobs_value)
   raise 'JOBS must be greater than or equal to 1' if jobs < 1
 

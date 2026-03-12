@@ -1,9 +1,14 @@
 {
+  "advice": {
+    "Implementation": [
+      "Create the final Ruby program as IMPLEMENT/hello."
+    ]
+  },
   "runtime": null,
   "expectations": {
     "max_duration_seconds": 720,
-    "verify_command": "cat",
-    "verify_glob": "IMPLEMENT/*",
-    "expected_stdout": "puts \"Hello, World!\"\n"
+    "verify_command": "ruby",
+    "verify_glob": "IMPLEMENT/hello",
+    "expected_stdout": "Hello, World!\n"
   }
 }

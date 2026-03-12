@@ -1,4 +1,9 @@
 {
+  "advice": {
+    "Implementation": [
+      "Create the final Ruby program as IMPLEMENT/nc."
+    ]
+  },
   "runtime": {
     "start_command": "ruby server.rb",
     "ready_tcp": {
@@ -10,7 +15,7 @@
   "expectations": {
     "max_duration_seconds": 1260,
     "verify_command": "ruby",
-    "verify_glob": "IMPLEMENT/*",
+    "verify_glob": "IMPLEMENT/nc",
     "expected_stdout": "SLOPINATOR\n"
   }
 }
