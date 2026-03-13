@@ -9,6 +9,6 @@
     "max_duration_seconds": 720,
     "verify_command": "ruby",
     "verify_glob": "IMPLEMENT/hello",
-    "expected_stdout": "HHello, World!\n"
+    "expected_stdout": "Hello, World!\n"
   }
 }

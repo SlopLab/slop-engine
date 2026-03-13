@@ -32,7 +32,7 @@ module SlopEngine
 
       def discover_fixtures
         fixture_paths = Dir.glob(File.join(EXAMPLES_DIR, '*', 'fixture.json')).sort
-        raise "No fixtures found in #{EXAMPLES_DIR}" if fixture_paths.empty?
+        raise "❌ No fixtures found in #{EXAMPLES_DIR}" if fixture_paths.empty?
 
         fixture_paths.map do |manifest_path|
           fixture_dir = File.dirname(manifest_path)
@@ -50,31 +50,31 @@ module SlopEngine
         validate_manifest!(manifest, manifest_path)
         manifest
       rescue JSON::ParserError => e
-        raise "Invalid fixture JSON in #{manifest_path}: #{e.message}"
+        raise "❌ Invalid fixture JSON in #{manifest_path}: #{e.message}"
       end
 
       def validate_manifest!(manifest, manifest_path)
         unless manifest.is_a?(Hash)
-          raise "Fixture manifest #{manifest_path} must contain a JSON object"
+          raise "❌ Fixture manifest #{manifest_path} must contain a JSON object"
         end
 
         expectations = manifest['expectations']
         unless expectations.is_a?(Hash)
-          raise "Fixture manifest #{manifest_path} must define expectations"
+          raise "❌ Fixture manifest #{manifest_path} must define expectations"
         end
 
         required_expectation_keys = %w[max_duration_seconds verify_command verify_glob expected_stdout]
         required_expectation_keys.each do |key|
-          raise "Fixture manifest #{manifest_path} is missing expectations.#{key}" unless expectations.key?(key)
+          raise "❌ Fixture manifest #{manifest_path} is missing expectations.#{key}" unless expectations.key?(key)
         end
 
         unless expectations['max_duration_seconds'].is_a?(Numeric)
-          raise "Fixture manifest #{manifest_path} has a non-numeric expectations.max_duration_seconds"
+          raise "❌ Fixture manifest #{manifest_path} has a non-numeric expectations.max_duration_seconds"
         end
 
         %w[verify_command verify_glob expected_stdout].each do |key|
           unless expectations[key].is_a?(String)
-            raise "Fixture manifest #{manifest_path} has a non-string expectations.#{key}"
+            raise "❌ Fixture manifest #{manifest_path} has a non-string expectations.#{key}"
           end
         end
 
@@ -86,63 +86,62 @@ module SlopEngine
         return if runtime.nil?
 
         unless runtime.is_a?(Hash)
-          raise "Fixture manifest #{manifest_path} has a non-object runtime"
+          raise "❌ Fixture manifest #{manifest_path} has a non-object runtime"
         end
 
         start_command = runtime['start_command']
         unless start_command.is_a?(String) && !start_command.empty?
-          raise "Fixture manifest #{manifest_path} has an invalid runtime.start_command"
+          raise "❌ Fixture manifest #{manifest_path} has an invalid runtime.start_command"
         end
 
         ready_tcp = runtime['ready_tcp']
         return if ready_tcp.nil?
 
         unless ready_tcp.is_a?(Hash)
-          raise "Fixture manifest #{manifest_path} has a non-object runtime.ready_tcp"
+          raise "❌ Fixture manifest #{manifest_path} has a non-object runtime.ready_tcp"
         end
 
         %w[host port timeout_seconds].each do |key|
-          raise "Fixture manifest #{manifest_path} is missing runtime.ready_tcp.#{key}" unless ready_tcp.key?(key)
+          raise "❌ Fixture manifest #{manifest_path} is missing runtime.ready_tcp.#{key}" unless ready_tcp.key?(key)
         end
 
         unless ready_tcp['host'].is_a?(String) && !ready_tcp['host'].empty?
-          raise "Fixture manifest #{manifest_path} has an invalid runtime.ready_tcp.host"
+          raise "❌ Fixture manifest #{manifest_path} has an invalid runtime.ready_tcp.host"
         end
 
         unless ready_tcp['port'].is_a?(Integer)
-          raise "Fixture manifest #{manifest_path} has a non-integer runtime.ready_tcp.port"
+          raise "❌ Fixture manifest #{manifest_path} has a non-integer runtime.ready_tcp.port"
         end
 
         unless ready_tcp['timeout_seconds'].is_a?(Numeric)
-          raise "Fixture manifest #{manifest_path} has a non-numeric runtime.ready_tcp.timeout_seconds"
+          raise "❌ Fixture manifest #{manifest_path} has a non-numeric runtime.ready_tcp.timeout_seconds"
         end
       end
 
       def validate_advice!(advice, manifest_path)
         unless advice.is_a?(Hash)
-          raise "Fixture manifest #{manifest_path} has a non-object advice"
+          raise "❌ Fixture manifest #{manifest_path} has a non-object advice"
         end
 
         advice.each do |step_name, entries|
           unless step_name.is_a?(String) && !step_name.empty?
-            raise "Fixture manifest #{manifest_path} has an invalid advice step name"
+            raise "❌ Fixture manifest #{manifest_path} has an invalid advice step name"
           end
 
           case entries
           when String
-            raise "Fixture manifest #{manifest_path} has an empty advice entry for #{step_name}" if entries.strip.empty?
+            raise "❌ Fixture manifest #{manifest_path} has an empty advice entry for #{step_name}" if entries.strip.empty?
           when Array
             if entries.empty? || !entries.all? { |entry| entry.is_a?(String) && !entry.strip.empty? }
-              raise "Fixture manifest #{manifest_path} has invalid advice entries for #{step_name}"
+              raise "❌ Fixture manifest #{manifest_path} has invalid advice entries for #{step_name}"
             end
           else
-            raise "Fixture manifest #{manifest_path} has invalid advice entries for #{step_name}"
+            raise "❌ Fixture manifest #{manifest_path} has invalid advice entries for #{step_name}"
           end
         end
       end
 
       def slopit(re_dir, advice)
-        puts "Starting in #{re_dir}"
         env = {}
         env['SLOPIT_ADVICE_JSON'] = JSON.generate(advice) unless advice.nil? || advice.empty?
         stdout, stderr, status = Open3.capture3(env, 'ruby', SLOPIT_PATH, re_dir)
@@ -150,14 +149,13 @@ module SlopEngine
 
         details = [stdout, stderr].reject(&:empty?).join("\n").strip
         details = '(no output from slopit)' if details.empty?
-        raise "slopit failed for #{re_dir}\n#{details}"
+        raise "  ❌ slopit failed for #{re_dir}\n#{details}"
       end
 
       def run_fixture(fixture)
         started_at = Time.now
         runtime = nil
 
-        puts "slopping #{fixture.name}..."
         build_dir = build_fixture(fixture)
         re_dir = stage_build_artifacts(fixture, build_dir)
 
@@ -166,7 +164,6 @@ module SlopEngine
           slopit(re_dir, fixture.manifest['advice'])
           enforce_duration!(Time.now - started_at, fixture.manifest.fetch('expectations').fetch('max_duration_seconds'))
           verify_output!(fixture, re_dir)
-          puts "#{fixture.name} was slopt!"
         ensure
           stop_runtime(runtime)
         end
@@ -202,7 +199,8 @@ module SlopEngine
           return
         end
 
-        puts "Running #{fixtures.length} fixtures with #{jobs} workers..."
+        puts "🎬 Running #{fixtures.length} fixtures with #{jobs} workers..."
+        puts
         run_fixtures_in_parallel(fixtures, jobs)
       end
 
@@ -219,7 +217,7 @@ module SlopEngine
           while active_workers.length < jobs && (fixture = queue.shift)
             worker = spawn_fixture_worker(fixture)
             active_workers[worker[:pid]] = worker
-            puts "Started #{fixture.name} in worker #{worker[:pid]}"
+            puts "⏳ Started #{fixture.name} in worker #{worker[:pid]}"
           end
 
           pid, status = Process.wait2
@@ -284,25 +282,26 @@ module SlopEngine
       end
 
       def print_worker_log(worker, status)
-        label = status.success? ? 'PASS' : 'FAIL'
-        puts "== #{worker[:fixture].name} #{label} =="
+        label = status.success? ? '👌' : '❌'
+        puts
+        puts "#{label} #{worker[:fixture].name} (#{worker[:pid]})"
         output = read_log(worker[:log_path])
-        print output unless output.empty?
+        print output unless output.empty? and not status.success?
         puts if output.empty? || !output.end_with?("\n")
       end
 
       def build_fixture(fixture)
         rakefile = File.join(fixture.dir, 'Rakefile')
-        raise "Missing Rakefile for #{fixture.name}: #{rakefile}" unless File.file?(rakefile)
+        raise "  ❌ Missing Rakefile for #{fixture.name}: #{rakefile}" unless File.file?(rakefile)
 
-        success = system('rake', 'build', chdir: fixture.dir)
-        raise "Build failed for #{fixture.name}" unless success
+        success = system('rake', 'build', chdir: fixture.dir, out: File::NULL, err: File::NULL)
+        raise "  ❌ Build failed for #{fixture.name}" unless success
 
         build_dir = File.join(fixture.dir, 'build')
-        raise "Build directory missing for #{fixture.name}: #{build_dir}" unless Dir.exist?(build_dir)
+        raise "  ❌ Build directory missing for #{fixture.name}: #{build_dir}" unless Dir.exist?(build_dir)
 
         build_entries = Dir.children(build_dir)
-        raise "Build directory is empty for #{fixture.name}: #{build_dir}" if build_entries.empty?
+        raise "  ❌ Build directory is empty for #{fixture.name}: #{build_dir}" if build_entries.empty?
 
         build_dir
       end
@@ -315,7 +314,7 @@ module SlopEngine
         FileUtils.mkdir_p(artifacts_dir)
         FileUtils.cp_r(build_entries, artifacts_dir, preserve: true)
 
-        puts "Artifacts available at #{artifacts_dir}"
+        puts "  💡 artifacts: #{artifacts_dir}"
 
         re_dir
       end
@@ -415,35 +414,35 @@ module SlopEngine
 
       def enforce_duration!(elapsed_seconds, max_seconds)
         if elapsed_seconds > max_seconds
-          raise format('reverse engineering took too long (%.2fs > %ss)', elapsed_seconds, max_seconds)
+          raise format('  ❌ reverse engineering took too long (%.2fs > %ss)', elapsed_seconds, max_seconds)
         end
 
-        puts ' - reverse engineering done'
+        puts '  ✅ reverse engineering'
       end
 
       def verify_output!(fixture, re_dir)
         expectations = fixture.manifest.fetch('expectations')
         verify_pattern = File.join(re_dir, expectations.fetch('verify_glob'))
         verify_targets = Dir.glob(verify_pattern).sort
-        raise "No verification targets matched #{verify_pattern}" if verify_targets.empty?
+        raise "  ❌ re-implementation failed w/o verification targets matching #{verify_pattern}" if verify_targets.empty?
 
         command = "#{expectations.fetch('verify_command')} #{Shellwords.join(verify_targets)}"
         stdout, stderr, status = Open3.capture3('bash', '-lc', command)
-        raise "Verification command failed for #{fixture.name}: #{stderr}" unless status.success?
+        raise "  ❌ re-implementation failed during verification command: #{stderr}" unless status.success?
 
         expected_stdout = expectations.fetch('expected_stdout')
         unless stdout == expected_stdout
           raise verification_output_mismatch_message(fixture.name, expected_stdout, stdout)
         end
 
-        puts ' - re-implementation correct'
+        puts '  ✅ re-implementation'
       end
 
       def verification_output_mismatch_message(fixture_name, expected, actual)
         [
-          "Verification output mismatch for #{fixture_name}",
-          "Expected: #{expected.dump}",
-          "Actual:   #{actual.dump}"
+          "  ❌ re-implementation verification failed",
+          "       - Expected: #{expected.dump}",
+          "       - Actual:   #{actual.dump}"
         ].join("\n")
       end
 
@@ -451,7 +450,7 @@ module SlopEngine
         message = read_log(worker[:error_path]).strip
         return message unless message.empty?
 
-        'unknown failure'
+        '  ❌ unknown failure'
       end
 
       def cleanup_worker_files(worker)
@@ -460,10 +459,10 @@ module SlopEngine
       end
 
       def suite_failure_message(failures)
-        lines = ['Fixtures failed:']
+        lines = ["\n\n----------------------\n\nFixtures failed:"]
 
         failures.each do |failure|
-          lines << "- #{failure.name}"
+          lines << "\n#{failure.name}"
           failure.message.to_s.rstrip.split("\n").each do |line|
             lines << "  #{line}"
           end
