@@ -248,7 +248,7 @@ module SlopEngine
             run_fixture(fixture)
             exit 0
           rescue StandardError => e
-            warn e.full_message(highlight: false, order: :top)
+            warn e.message
             exit 1
           end
         end
@@ -409,12 +409,20 @@ module SlopEngine
         stdout, stderr, status = Open3.capture3('bash', '-lc', command)
         raise "Verification command failed for #{fixture.name}: #{stderr}" unless status.success?
 
-        unless stdout == expectations.fetch('expected_stdout')
-          puts ' - re-implementation is not correct'
-          raise "Verification output mismatch for #{fixture.name}"
+        expected_stdout = expectations.fetch('expected_stdout')
+        unless stdout == expected_stdout
+          raise verification_output_mismatch_message(fixture.name, expected_stdout, stdout)
         end
 
         puts ' - re-implementation correct'
+      end
+
+      def verification_output_mismatch_message(fixture_name, expected, actual)
+        [
+          "Verification output mismatch for #{fixture_name}",
+          "Expected: #{expected.dump}",
+          "Actual:   #{actual.dump}"
+        ].join("\n")
       end
     end
   end

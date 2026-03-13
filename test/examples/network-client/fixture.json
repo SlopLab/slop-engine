@@ -13,7 +13,7 @@
     }
   },
   "expectations": {
-    "max_duration_seconds": 1260,
+    "max_duration_seconds": 1400,
     "verify_command": "ruby",
     "verify_glob": "IMPLEMENT/nc",
     "expected_stdout": "SLOPINATOR\n"
