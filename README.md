@@ -10,3 +10,4 @@ This project uses `rake` as the entrypoint for the fixture-based test harness.
 - `rake clean` removes fixture build outputs.
 
 The tasks use the system `ruby` and `rake` installation directly. No Bundler setup is required.
+Each fixture under `test/examples` also exposes its own `rake build` and `rake clean` tasks.

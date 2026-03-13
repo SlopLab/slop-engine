@@ -1,0 +1,17 @@
+require 'fileutils'
+
+BUILD_DIR = 'build'
+OUTPUT = File.join(BUILD_DIR, 'hello')
+
+desc 'Build fixture artifacts'
+task :build do
+  FileUtils.mkdir_p(BUILD_DIR)
+  sh 'gcc', '-O2', '-s', 'hello.c', '-o', OUTPUT
+  puts "Build complete: #{OUTPUT}"
+end
+
+desc 'Remove build outputs'
+task :clean do
+  FileUtils.rm_rf(BUILD_DIR)
+  puts 'Cleanup complete.'
+end

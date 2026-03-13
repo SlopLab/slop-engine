@@ -172,13 +172,11 @@ module SlopEngine
       def clean_fixture(fixture)
         puts "cleaning #{fixture.name}..."
 
-        clean_script = File.join(fixture.dir, 'clean.sh')
-        if File.file?(clean_script)
-          success = system('bash', './clean.sh', chdir: fixture.dir)
-          raise "Cleanup failed for #{fixture.name}" unless success
-        else
-          FileUtils.rm_rf(File.join(fixture.dir, 'build'))
-        end
+        rakefile = File.join(fixture.dir, 'Rakefile')
+        raise "Missing Rakefile for #{fixture.name}: #{rakefile}" unless File.file?(rakefile)
+
+        success = system('rake', 'clean', chdir: fixture.dir)
+        raise "Cleanup failed for #{fixture.name}" unless success
 
         puts "#{fixture.name} cleaned"
       end
@@ -272,10 +270,10 @@ module SlopEngine
       end
 
       def build_fixture(fixture)
-        build_script = File.join(fixture.dir, 'build.sh')
-        raise "Missing build script for #{fixture.name}: #{build_script}" unless File.file?(build_script)
+        rakefile = File.join(fixture.dir, 'Rakefile')
+        raise "Missing Rakefile for #{fixture.name}: #{rakefile}" unless File.file?(rakefile)
 
-        success = system('bash', './build.sh', chdir: fixture.dir)
+        success = system('rake', 'build', chdir: fixture.dir)
         raise "Build failed for #{fixture.name}" unless success
 
         build_dir = File.join(fixture.dir, 'build')
