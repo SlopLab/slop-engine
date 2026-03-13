@@ -15,6 +15,9 @@ module SlopEngine
     SLOPIT_PATH = File.join(ROOT_DIR, 'slopit.rb')
 
     Fixture = Struct.new(:name, :dir, :manifest, keyword_init: true)
+    Failure = Struct.new(:name, :message, keyword_init: true)
+
+    class SuiteFailure < StandardError; end
 
     class << self
       def run
@@ -195,7 +198,7 @@ module SlopEngine
         jobs = [configured_jobs, fixtures.length].min
 
         if jobs <= 1
-          fixtures.each { |fixture| run_fixture(fixture) }
+          run_fixtures_sequentially(fixtures)
           return
         end
 
@@ -223,17 +226,35 @@ module SlopEngine
           worker = active_workers.delete(pid)
           next unless worker
 
-          print_worker_log(worker, status)
-          failed_fixtures << worker[:fixture].name unless status.success?
+          begin
+            print_worker_log(worker, status)
+            next if status.success?
+
+            failed_fixtures << Failure.new(
+              name: worker[:fixture].name,
+              message: worker_failure_message(worker)
+            )
+          ensure
+            cleanup_worker_files(worker)
+          end
         end
 
         return if failed_fixtures.empty?
 
-        raise "Fixtures failed: #{failed_fixtures.join(', ')}"
+        raise SuiteFailure, suite_failure_message(failed_fixtures)
+      end
+
+      def run_fixtures_sequentially(fixtures)
+        fixtures.each do |fixture|
+          run_fixture(fixture)
+        rescue StandardError => e
+          raise SuiteFailure, suite_failure_message([Failure.new(name: fixture.name, message: e.message)])
+        end
       end
 
       def spawn_fixture_worker(fixture)
         log_path = File.join(Dir.tmpdir, "test-#{fixture.name}-#{Process.pid}-#{Time.now.to_i}.log")
+        error_path = File.join(Dir.tmpdir, "test-#{fixture.name}-#{Process.pid}-#{Time.now.to_i}.error")
 
         pid = fork do
           log_file = File.open(log_path, 'w')
@@ -248,6 +269,7 @@ module SlopEngine
             run_fixture(fixture)
             exit 0
           rescue StandardError => e
+            File.write(error_path, e.message)
             warn e.message
             exit 1
           end
@@ -256,7 +278,8 @@ module SlopEngine
         {
           pid: pid,
           fixture: fixture,
-          log_path: log_path
+          log_path: log_path,
+          error_path: error_path
         }
       end
 
@@ -266,7 +289,6 @@ module SlopEngine
         output = read_log(worker[:log_path])
         print output unless output.empty?
         puts if output.empty? || !output.end_with?("\n")
-        FileUtils.rm_f(worker[:log_path])
       end
 
       def build_fixture(fixture)
@@ -423,6 +445,31 @@ module SlopEngine
           "Expected: #{expected.dump}",
           "Actual:   #{actual.dump}"
         ].join("\n")
+      end
+
+      def worker_failure_message(worker)
+        message = read_log(worker[:error_path]).strip
+        return message unless message.empty?
+
+        'unknown failure'
+      end
+
+      def cleanup_worker_files(worker)
+        FileUtils.rm_f(worker[:log_path])
+        FileUtils.rm_f(worker[:error_path])
+      end
+
+      def suite_failure_message(failures)
+        lines = ['Fixtures failed:']
+
+        failures.each do |failure|
+          lines << "- #{failure.name}"
+          failure.message.to_s.rstrip.split("\n").each do |line|
+            lines << "  #{line}"
+          end
+        end
+
+        lines.join("\n")
       end
     end
   end
