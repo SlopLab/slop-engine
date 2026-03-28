@@ -5,5 +5,5 @@
       "STATIC"
     ]
   },
-  "prompt": "Under the folder 'artifacts' are file(s) which should be reverse engineered. The file ARTIFACTS.md contains a list with all relevant files and their details. Use this list and perform a static analysis of the files (e.g. unpack installers, disassemble executables). Afterwards create a folder 'STATIC' which contains a markdown file for each analysed file. This markdown file contains the relevant findings of the static analysis."
+  "prompt": "Under the folder 'artifacts' are file(s) which should be reverse engineered. The file ARTIFACTS.md contains a list with all relevant files and their details. Use this list to plan and perform a static analysis of the files (e.g. unpack installers, disassemble executables). Create a folder 'STATIC' with a file PLAN.md in which you outline your plan for the static analysis. You also use this file to track your progress. Furthermore you create markdown files for each analysed file. This markdown files contains the relevant findings of the static analysis. The file STATIC/SUMMARY.md contains a conclusive report of the static analysis performed. If something goes wrong create the file ERROR/STATIC.md and document the issue there."
 }

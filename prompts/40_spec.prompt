@@ -5,5 +5,5 @@
       "SPEC"
     ]
   },
-  "prompt": "Under the folder 'STATIC' is a static analysis and under the folder 'DYNAMIC' is a dynamic analysis of a set of file(s). Create a specification which is sufficient to perform a clean-room implementation of the functionality of the original files without adding any internal implementation details of the previous reverse engineered artifacts. Create a folder 'SPEC' which contains all necessary specification files."
+  "prompt": "Under the folder 'STATIC' is a static analysis and under the folder 'DYNAMIC' is a dynamic analysis of a set of file(s). Create a specification which is sufficient to perform a clean-room implementation of the functionality of the original files without adding any internal implementation details of the previous reverse engineered artifacts. Create a folder 'SPEC' which contains all necessary specification files. If something goes wrong create the file ERROR/SPEC.md and document the issue there."
 }

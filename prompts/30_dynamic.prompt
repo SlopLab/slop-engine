@@ -5,5 +5,5 @@
       "DYNAMIC"
     ]
   },
-  "prompt": "Under the folder 'artifacts' are file(s) which should be reverse engineered. The file ARTIFACTS.md contains a list with all relevant files and their details. Use this list and perform a dynamic analysis of the files (e.g. install an installer, execute a binary). Afterwards create a folder 'DYNAMIC' which contains a markdown file for each analysed file. This markdown file contains the relevant findings of the dynamic analysis."
+  "prompt": "Under the folder 'artifacts' are file(s) which should be reverse engineered. The file ARTIFACTS.md contains a list with all relevant files and their details. Under the folder 'STATIC' are the findings of the static analysis. Use these information to plan and execute the dynamic analysis. Create a folder 'DYNAMIC' which contains the findings of the dynamic analysis. Use the file DYNAMIC/PLAN.md to track the steps for the dynamic analysis and the progress. Before you start create a plan in this file and then work thru this plan. The file DYNAMIC/SUMMARY.md contains a conclusive report of the dynamic analysis. If something goes wrong create the file ERROR/DYNAMIC.md and document the issue there."
 }
