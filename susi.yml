@@ -1,0 +1,8 @@
+---
+cpus: 2
+memory: 2GiB
+disk: 30GiB
+gui: false
+version: 1
+template: debian
+arch: native
